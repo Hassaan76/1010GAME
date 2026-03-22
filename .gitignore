@@ -1,0 +1,22 @@
+# Node.js
+node_modules/
+dist/
+npm-debug.log*
+
+# Android
+.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/*.iml
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project
+www/
+capacitor.config.json

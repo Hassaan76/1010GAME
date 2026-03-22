@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>1010! Dark Pro</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --grid-bg: #1e1e1e;
+            --cell-empty: #2a2a2a;
+            --text-primary: #ffffff;
+            --text-secondary: #888888;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            user-select: none;
+            touch-action: none;
+        }
+
+        #header {
+            display: flex;
+            justify-content: space-between;
+            width: 360px;
+            margin-top: -20px;
+            margin-bottom: 50px;
+        }
+
+        .score-box {
+            text-align: center;
+        }
+
+        .score-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .score-value {
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        #game-container {
+            background-color: var(--grid-bg);
+            padding: 10px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        canvas {
+            display: block;
+            border-radius: 6px;
+        }
+
+        #pieces-area {
+            display: flex;
+            justify-content: space-between;
+            width: 380px;
+            margin-top: 80px;
+            height: 120px;
+        }
+
+        .piece-slot {
+            width: 120px;
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.03);
+            border-radius: 12px;
+            cursor: grab;
+            transition: background 0.2s;
+        }
+
+        #drag-container {
+            position: fixed;
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            filter: drop-shadow(0 5px 20px rgba(0,0,0,0.6));
+        }
+
+        #game-over-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            backdrop-filter: blur(8px);
+        }
+
+        #game-over-overlay h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+            color: #ff3b30;
+        }
+
+        #game-over-overlay button {
+            background: #4cd964;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            font-weight: 700;
+            border-radius: 40px;
+            cursor: pointer;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <div class="score-box">
+            <div class="score-label">Score</div>
+            <div id="score" class="score-value">0</div>
+        </div>
+        <div class="score-box">
+            <div class="score-label">Best</div>
+            <div id="best-score" class="score-value">0</div>
+        </div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="360" height="360"></canvas>
+    </div>
+
+    <div id="pieces-area">
+        <div class="piece-slot" id="slot0" onmousedown="grabPiece(event, 0)"></div>
+        <div class="piece-slot" id="slot1" onmousedown="grabPiece(event, 1)"></div>
+        <div class="piece-slot" id="slot2" onmousedown="grabPiece(event, 2)"></div>
+    </div>
+
+    <div id="drag-container">
+        <canvas id="dragCanvas"></canvas>
+    </div>
+
+    <div id="game-over-overlay">
+        <h1>GAME OVER</h1>
+        <div id="final-score" style="font-size: 24px; color: #888;">Score: 0</div>
+        <button onclick="resetGame()">PLAY AGAIN</button>
+    </div>
+
+    <script src="game.js"></script>
+    <script>
+        const game = new BitboardGame();
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const dragCanvas = document.getElementById('dragCanvas');
+        const dragCtx = dragCanvas.getContext('2d');
+        const dragContainer = document.getElementById('drag-container');
+
+        let currentPieces = [null, null, null];
+        let grabbedIdx = -1;
+        let ghostPos = -1;
+
+        const CELL_SIZE = 34; // Reduced to fit width
+        const PADDING = 2;
+
+        function init() {
+            newRound();
+            updateScores();
+            requestAnimationFrame(drawLoop);
+        }
+
+        function newRound() {
+            currentPieces = [game.getRandomPiece(), game.getRandomPiece(), game.getRandomPiece()];
+            renderSlots();
+        }
+
+        function updateScores() {
+            document.getElementById('score').innerText = game.score;
+            document.getElementById('best-score').innerText = game.bestScore;
+        }
+
+        function renderSlots() {
+            for (let i = 0; i < 3; i++) {
+                const slot = document.getElementById(`slot${i}`);
+                slot.innerHTML = '';
+                if (currentPieces[i]) {
+                    const c = document.createElement('canvas');
+                    c.width = 120;
+                    c.height = 120;
+                    const pCtx = c.getContext('2d');
+                    drawPiece(pCtx, currentPieces[i], 0, 0, 16, 1, 120, 120);
+                    slot.appendChild(c);
+                }
+            }
+        }
+
+        function drawPiece(pCtx, piece, x, y, size, gap, canvasW, canvasH, alpha = 1) {
+            const totalW = piece.width * (size + gap) - gap;
+            const totalH = piece.height * (size + gap) - gap;
+            const startX = (canvasW - totalW) / 2 + x;
+            const startY = (canvasH - totalH) / 2 + y;
+
+            pCtx.globalAlpha = alpha;
+            for (let r = 0; r < piece.height; r++) {
+                for (let c = 0; c < piece.width; c++) {
+                    const bit = (piece.mask >> BigInt(r * 10 + c)) & 1n;
+                    if (bit) {
+                        pCtx.fillStyle = piece.color;
+                        drawRoundedRect(pCtx, startX + c * (size + gap), startY + r * (size + gap), size, size, 5);
+                    }
+                }
+            }
+            pCtx.globalAlpha = 1;
+        }
+
+        function drawRoundedRect(pCtx, x, y, width, height, radius) {
+            pCtx.beginPath();
+            pCtx.moveTo(x + radius, y);
+            pCtx.lineTo(x + width - radius, y);
+            pCtx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            pCtx.lineTo(x + width, y + height - radius);
+            pCtx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            pCtx.lineTo(x + radius, y + height);
+            pCtx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            pCtx.lineTo(x, y + radius);
+            pCtx.quadraticCurveTo(x, y, x + radius, y);
+            pCtx.closePath();
+            pCtx.fill();
+        }
+
+        function drawLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let r = 0; r < 10; r++) {
+                for (let c = 0; c < 10; c++) {
+                    const pos = r * 10 + c;
+                    const color = game.gridColors[pos];
+                    ctx.fillStyle = color || '#2a2a2a';
+                    drawRoundedRect(ctx, c * (CELL_SIZE + PADDING) + PADDING, r * (CELL_SIZE + PADDING) + PADDING, CELL_SIZE, CELL_SIZE, 5);
+                }
+            }
+
+            if (grabbedIdx !== -1 && ghostPos !== -1) {
+                const piece = currentPieces[grabbedIdx];
+                const gr = Math.floor(ghostPos / 10);
+                const gc = ghostPos % 10;
+                ctx.globalAlpha = 0.4;
+                for (let r = 0; r < piece.height; r++) {
+                    for (let c = 0; c < piece.width; c++) {
+                        if ((piece.mask >> BigInt(r * 10 + c)) & 1n) {
+                            ctx.fillStyle = piece.color;
+                            drawRoundedRect(ctx, (gc + c) * (CELL_SIZE + PADDING) + PADDING, (gr + r) * (CELL_SIZE + PADDING) + PADDING, CELL_SIZE, CELL_SIZE, 5);
+                        }
+                    }
+                }
+                ctx.globalAlpha = 1;
+            }
+            requestAnimationFrame(drawLoop);
+        }
+
+        function grabPiece(e, idx) {
+            if (!currentPieces[idx]) return;
+            grabbedIdx = idx;
+            const piece = currentPieces[idx];
+            
+            const w = piece.width * (CELL_SIZE + PADDING) + 20;
+            const h = piece.height * (CELL_SIZE + PADDING) + 20;
+            dragCanvas.width = w;
+            dragCanvas.height = h;
+            drawPiece(dragCtx, piece, 0, 0, CELL_SIZE, PADDING, w, h);
+            
+            dragContainer.style.display = 'block';
+            updateDragPosition(e);
+            document.getElementById(`slot${idx}`).style.opacity = '0';
+            
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+        }
+
+        function onMouseMove(e) {
+            updateDragPosition(e);
+            const rect = canvas.getBoundingClientRect();
+            const piece = currentPieces[grabbedIdx];
+            const pieceW = piece.width * (CELL_SIZE + PADDING);
+            const pieceH = piece.height * (CELL_SIZE + PADDING);
+            
+            // Adjust to align piece corner to grid
+            const x = e.clientX - rect.left - (pieceW / 2);
+            const y = e.clientY - rect.top - (pieceH / 2);
+            
+            const col = Math.round(x / (CELL_SIZE + PADDING));
+            const row = Math.round(y / (CELL_SIZE + PADDING));
+            const pos = row * 10 + col;
+
+            ghostPos = game.canPlace(piece, pos) ? pos : -1;
+        }
+
+        function updateDragPosition(e) {
+            dragContainer.style.left = (e.clientX - dragCanvas.width / 2) + 'px';
+            dragContainer.style.top = (e.clientY - dragCanvas.height / 2) + 'px';
+        }
+
+        function onMouseUp(e) {
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+            dragContainer.style.display = 'none';
+            
+            if (ghostPos !== -1) {
+                game.applyMove(currentPieces[grabbedIdx], ghostPos);
+                currentPieces[grabbedIdx] = null;
+                updateScores();
+                if (currentPieces.every(p => p === null)) newRound();
+                if (game.isGameOver(currentPieces)) showGameOver();
+            }
+
+            document.getElementById(`slot${grabbedIdx}`).style.opacity = '1';
+            renderSlots();
+            grabbedIdx = -1;
+            ghostPos = -1;
+        }
+
+        function showGameOver() {
+            document.getElementById('final-score').innerText = `Score: ${game.score}`;
+            document.getElementById('game-over-overlay').style.display = 'flex';
+        }
+
+        function resetGame() {
+            game.grid = 0n;
+            game.gridColors.fill(null);
+            game.score = 0;
+            document.getElementById('game-over-overlay').style.display = 'none';
+            newRound();
+            updateScores();
+        }
+
+        init();
+    </script>
+</body>
+</html>

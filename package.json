@@ -1,0 +1,21 @@
+{
+  "name": "1010-clone",
+  "version": "1.0.0",
+  "description": "High-performance 1010! clone with strategy simulation.",
+  "author": "twfit",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-packager . 1010Game --platform=win32 --arch=x64 --out=dist --overwrite"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3",
+    "electron-packager": "^17.1.2"
+  }
+}
